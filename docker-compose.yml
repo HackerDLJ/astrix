@@ -1,0 +1,17 @@
+services:
+  backend:
+    build: ./backend
+    ports: ["8000:8000"]
+    environment:
+      ASTRIX_MODEL_PATH: yolo11n.pt
+      ASTRIX_CONFIDENCE: "0.25"
+      ASTRIX_CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+    volumes:
+      - ./backend:/app
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports: ["8080:80"]
+    depends_on: [backend]

@@ -13,7 +13,7 @@ ASTRIX is a web application starter with a premium dark UI, browser camera captu
 ## Stack
 
 - Frontend: React + Vite + TypeScript + Tailwind-style CSS
-- Local detection: ONNX Runtime Web (optional local model)
+- Optional browser model loading: ONNX Runtime Web (live detection currently uses the backend)
 - Backend: FastAPI + Ultralytics YOLO + optional depth model
 - Voice: Web Speech API
 - Tracking: IoU-based lightweight tracker
@@ -53,9 +53,7 @@ Open the Vite URL. Camera access requires `localhost` or HTTPS and user permissi
 
 Place an exported ONNX detector at `frontend/public/models/obstacles.onnx`, then create `frontend/public/models/classes.json` as a JSON array of class names in the same order as the model. Set `VITE_LOCAL_MODEL_URL=/models/obstacles.onnx`.
 
-**Important:** the provided browser decoder expects YOLO-style output shaped like `[1, 4 + classes, candidates]` or `[1, candidates, 4 + classes]`, with xywh box coordinates in the input image coordinate system (typically 640x640) and class scores following the first four box values. Some exported YOLO models include objectness or NMS outputs; adapt `decodeYoloOutput()` to your exact export. Test the decoder before relying on it.
-
-If a local model is unavailable or fails to load, ASTRIX can use the backend endpoint.
+The settings button can load the ONNX file to verify that it is accessible, but browser-side inference is not implemented. Live camera frames are sent to the backend API, so a local ONNX file is not required for detection. Configure `VITE_API_URL` to use a deployed backend.
 
 ## Dataset and fine-tuning
 
@@ -99,7 +97,9 @@ The backend optionally loads Transformers `depth-anything/Depth-Anything-V2-Smal
 
 ## Deployment
 
-Deploy frontend and backend separately. The browser camera requires HTTPS in production. The backend should be deployed behind HTTPS with rate limits, upload-size limits, authentication if private, and a GPU if low-latency server inference is needed. Do not expose unrestricted model inference to the public internet.
+Deploy frontend and backend separately. For Vercel, set the frontend project root to `frontend` and configure `VITE_API_URL` as the public HTTPS origin of your deployed backend (for example, `https://your-api.example.com`, without `/api/detect`). This is a build-time variable, so redeploy after changing it. The development-only `localhost:8000` fallback is not used in production.
+
+Set the backend's `ASTRIX_CORS_ORIGINS` to the exact Vercel site origin(s), such as `https://your-app.vercel.app` (comma-separated for multiple origins). The browser camera requires HTTPS in production. The backend should be deployed behind HTTPS with rate limits, upload-size limits, authentication if private, and a GPU if low-latency server inference is needed. Do not expose unrestricted model inference to the public internet.
 
 ## References to evaluate during development
 

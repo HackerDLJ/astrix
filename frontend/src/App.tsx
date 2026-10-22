@@ -14,7 +14,7 @@ type ApiResult = { detections: Detection[]; inference_ms: number; image: {width:
 
 type ObjectStyle = CSSProperties & { '--object-color': string };
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API = (import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : '')).replace(/\/+$/, '');
 const LOCAL_MODEL_URL = import.meta.env.VITE_LOCAL_MODEL_URL || '';
 const COLORS = ['#44D7B6','#55A7FF','#B69CFF','#FFB45E','#FF718B','#70D6FF'];
 const pretty = (s: string) => s.replace(/[_-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -57,6 +57,7 @@ export default function App() {
   const [status, setStatus] = useState<'idle'|'starting'|'live'|'error'>('idle');
   const [lastUpdate, setLastUpdate] = useState('');
   const [localModelState, setLocalModelState] = useState<'off'|'loading'|'ready'|'failed'>('off');
+  const [localModelError, setLocalModelError] = useState('');
 
   const selected = detections.find(d => d.id === selectedId) || detections[0] || null;
   const nearest = useMemo(() => detections.reduce<Detection|null>((a,d) => {
@@ -153,6 +154,7 @@ export default function App() {
       const blob = await new Promise<Blob>((resolve,reject) => canvas.toBlob(b => b ? resolve(b) : reject(new Error('Frame encoding failed')), 'image/jpeg', .78));
       const form = new FormData(); form.append('image', blob, 'frame.jpg');
       form.append('confidence', String(sensitivity));
+      if (!API) throw new Error('Detection backend is not configured. Set VITE_API_URL in Vercel to your deployed backend URL, then redeploy.');
       const res = await fetch(`${API}/api/detect`, { method: 'POST', body: form });
       if (!res.ok) {
         const body: { detail?: unknown } = await res.json();
@@ -196,8 +198,9 @@ export default function App() {
   }, []);
 
   const enableLocalModel = async () => {
-    if (!LOCAL_MODEL_URL) { setLocalModelState('failed'); return; }
+    if (!LOCAL_MODEL_URL) return;
     setLocalModelState('loading');
+    setLocalModelError('');
     try {
       const ort = await import('onnxruntime-web');
       const session = await ort.InferenceSession.create(LOCAL_MODEL_URL, { executionProviders: ['webgpu', 'wasm'] });
@@ -205,7 +208,10 @@ export default function App() {
       // Plug the exact model-specific preprocessing/decoder into this session before local inference.
       window.__astrixOrtSession = session;
       setLocalModelState('ready');
-    } catch { setLocalModelState('failed'); }
+    } catch (error: unknown) {
+      setLocalModelState('failed');
+      setLocalModelError(errorMessage(error, 'Could not load the browser model.'));
+    }
   };
 
   const riskCount = detections.filter(d => d.risk === 'Near' || d.risk === 'Caution').length;
@@ -271,7 +277,8 @@ export default function App() {
     {settingsOpen && <div className="modal-backdrop" onClick={()=>setSettingsOpen(false)}><div className="settings-modal" onClick={e=>e.stopPropagation()}><div className="modal-header"><div><span className="tiny-label">CONFIGURATION</span><h2>Vision preferences</h2></div><button className="icon-button" onClick={()=>setSettingsOpen(false)}><X size={18}/></button></div>
       <label className="setting-label">Detection sensitivity <strong>{Math.round(sensitivity*100)}%</strong></label><input type="range" min=".15" max=".8" step=".05" value={sensitivity} onChange={e=>setSensitivity(Number(e.target.value))}/><p className="setting-help">Lower values detect more objects but may increase false positives. Detection may still be limited by the model's classes.</p>
       <div className="setting-line"><div><b>Voice warnings</b><span>Spoken obstacle alerts</span></div><button className={`switch ${voiceOn?'switch-on':''}`} onClick={()=>setVoiceOn(v=>!v)}><span/></button></div>
-      <div className="setting-line"><div><b>Local model status</b><span>{localModelState==='ready'?'Model file loaded':localModelState==='loading'?'Loading model':localModelState==='failed'?'No compatible model configured':'Optional browser inference'}</span></div><button className="secondary-button" onClick={enableLocalModel}>{localModelState==='loading'?'Loading…':'Load model'}</button></div>
+      <div className="setting-line"><div><b>Optional browser model</b><span>{localModelState==='ready'?'Model file loaded; live detection uses the server':localModelState==='loading'?'Loading model':localModelState==='failed'?'Browser model failed to load':LOCAL_MODEL_URL?'Available for browser loading':'Not configured; live detection uses the server'}</span></div><button className="secondary-button" onClick={enableLocalModel} disabled={!LOCAL_MODEL_URL || localModelState==='loading'}>{localModelState==='loading'?'Loading…':LOCAL_MODEL_URL?'Load model':'Not configured'}</button></div>
+      {localModelError && <p className="setting-help" role="alert">{localModelError}</p>}
       <div className="setting-warning"><ShieldAlert size={16}/><span>Distances are shown as unknown until a calibrated metric-depth pipeline is connected. Do not use this prototype as your only mobility aid.</span></div>
       <button className="primary-button modal-done" onClick={()=>setSettingsOpen(false)}><Check size={16}/> Save preferences</button>
     </div></div>}
